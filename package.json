@@ -12,7 +12,8 @@
     "dev": "node --watch index.js",
     "demo:feed": "node scripts/demo-feed.js",
     "demo:engine": "node scripts/demo-engine.js",
-    "demo:supabase": "node scripts/demo-supabase.js"
+    "demo:supabase": "node scripts/demo-supabase.js",
+    "demo:telegram": "node scripts/demo-telegram.js"
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.8",
