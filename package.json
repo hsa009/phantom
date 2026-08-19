@@ -18,7 +18,9 @@
   "dependencies": {
     "@solana/web3.js": "^1.95.8",
     "@supabase/supabase-js": "^2.112.3",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "ws": "^8.21.3"
   },
   "license": "MIT"
 }
