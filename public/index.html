@@ -110,6 +110,7 @@
           </div>
         </div>
         <div class="ln" style="margin-top:10px">
+          <span>BTC Price</span><span id="price">—</span>
           <span>Mid</span><span id="mid">—</span>
           <span>Spread</span><span id="spread">—</span>
           <span>Market</span><span id="market">—</span>
@@ -165,7 +166,7 @@
     if (!state) return;
     const s = state, st = s.status || {}, q = s.quote;
 
-    $('chip-mode').textContent = (s.mode || '—').toUpperCase() + (q && q.simulated ? ' (SIM)' : '');
+    $('chip-mode').textContent = (q && q.asset ? q.asset : s.mode || '—').toUpperCase() + (q && q.simulated ? ' (SIM)' : '');
     $('chip-clients').textContent = (s.wsClients ?? 0) + ' clients';
 
     $('balance').textContent = money(st.balance ?? s.balance);
@@ -182,6 +183,7 @@
       $('mid').textContent = price(q.mid);
       $('spread').textContent = (q.yesAsk - q.yesBid).toFixed(4);
       $('market').textContent = q.marketId;
+      $('price').textContent = q.price != null ? '$' + Number(q.price).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—';
     }
 
     const p = st.openPosition;

@@ -23,6 +23,7 @@ function overrideForDemo(config) {
   config.EXIT_BUFFER_MS = Math.max(500, Math.round(dur * 0.2));
   // Shrink lookbacks so the momentum buffer fills after a window or two.
   config.MOMENTUM_LOOKBACK_MS = Math.min(config.MOMENTUM_LOOKBACK_MS, Math.round(dur * 0.5));
+  // MOMENTUM_THRESHOLD is a fractional return; keep it loose for the demo.
   config.MOMENTUM_THRESHOLD = Math.max(0.0005, config.MOMENTUM_THRESHOLD * 0.5);
   return config;
 }

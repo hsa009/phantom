@@ -11,11 +11,13 @@
     "start": "node index.js",
     "dev": "node --watch index.js",
     "demo:feed": "node scripts/demo-feed.js",
+    "demo:drift": "node scripts/demo-drift.js",
     "demo:engine": "node scripts/demo-engine.js",
     "demo:supabase": "node scripts/demo-supabase.js",
     "demo:telegram": "node scripts/demo-telegram.js"
   },
   "dependencies": {
+    "@drift-labs/sdk": "^2.155.0",
     "@solana/web3.js": "^1.95.8",
     "@supabase/supabase-js": "^2.112.3",
     "dotenv": "^16.4.7",
