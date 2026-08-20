@@ -217,6 +217,34 @@
     return 'https://phantom-3nye.onrender.com';
   }
 
+  function xhrJson(method, url, body, cb) {
+    const x = new XMLHttpRequest();
+    x.open(method, url);
+    if (body) x.setRequestHeader('Content-Type', 'application/json');
+    x.onload = () => {
+      let j = null;
+      try { j = JSON.parse(x.responseText || '{}'); } catch (e) {}
+      cb(j, x.status);
+    };
+    x.onerror = () => cb(null, 0);
+    body ? x.send(JSON.stringify(body)) : x.send();
+  }
+
+  function riskRequest(method, url, body, cb) {
+    xhrJson(method, url, body, (j, status) => {
+      if (status !== 0 && j) { cb(j, status); return; }
+      const opts = { method };
+      if (body) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify(body);
+      }
+      fetch(url, opts)
+        .then((r) => r.json())
+        .catch(() => null)
+        .then((j2) => cb(j2, j2 ? 200 : 0));
+    });
+  }
+
   let state = null, ws = null, delay = 500;
   const setConn = (cls, txt) => { $('connbox').className = 'conn ' + cls; $('conntext').textContent = txt; };
 
@@ -262,26 +290,16 @@
     };
     if (pushTimer) clearTimeout(pushTimer);
     pushTimer = setTimeout(() => {
-      fetch(apiBase() + '/api/risk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-        .then((r) => r.json())
-        .then((j) => {
-          if (j && j.ok) {
-            riskDirty = false;
-            riskPending = false;
-            if (state) state.risk = j.risk;
-            syncRiskFromState();
-          } else {
-            riskPending = false;
-          }
-        })
-        .catch((err) => {
-          console.error('risk push failed:', err);
+      riskRequest('POST', apiBase() + '/api/risk', payload, (j) => {
+        if (j && j.ok) {
+          riskDirty = false;
           riskPending = false;
-        });
+          if (state) state.risk = j.risk;
+          syncRiskFromState();
+        } else {
+          riskPending = false;
+        }
+      });
     }, 150);
   }
 
@@ -400,10 +418,10 @@
     }
   }, 1000);
 
-  fetch(apiBase() + '/api/risk')
-    .then((r) => r.json())
-    .then((j) => { if (j && j.ok) { if (!state) state = { risk: j.risk }; syncRiskFromState(); } else { state = state || {}; state.risk = j.risk; syncRiskFromState(); } })
-    .catch(() => {});
+  riskRequest('GET', apiBase() + '/api/risk', null, (j) => {
+    if (j && j.ok) { if (!state) state = { risk: j.risk }; syncRiskFromState(); }
+    else { state = state || {}; state.risk = (j && j.risk) || {}; syncRiskFromState(); }
+  });
 
   connect();
 })();
