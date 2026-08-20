@@ -189,7 +189,6 @@
   </div>
 <script>
 (() => {
-  const WS_URL = 'wss://phantom-3nye.onrender.com';
   const $ = (id) => document.getElementById(id);
   const money = (x) => (x == null ? '—' : (x < 0 ? '-' : '') + '$' + Math.abs(x).toFixed(2));
   const price = (x) => (x == null ? '—' : Number(x).toFixed(4));
@@ -208,9 +207,9 @@
 
   function wsUrl() {
     const h = location.hostname;
-    if (h === 'localhost' || h === '127.0.0.1') return 'ws://' + location.host + '/';
-    if (h.includes('onrender.com')) return 'wss://' + location.host + '/';
-    return WS_URL;
+    if (h === 'localhost' || h === '127.0.0.1') return 'ws://' + location.host + '/ws';
+    if (h.includes('onrender.com')) return 'wss://' + location.host + '/ws';
+    return 'wss://phantom-3nye.onrender.com/ws';
   }
   function apiBase() {
     const h = location.hostname;
