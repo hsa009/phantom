@@ -121,6 +121,18 @@ async function main() {
     });
   });
 
+  // Feed/mode diagnostics — one curl to see exactly what feed is live.
+  app.get('/api/mode', (req, res) => {
+    res.json({
+      marketMode: config.MARKET_MODE,
+      feedMode: feed.feedMode,
+      feedSource: feed.source || 'unknown',
+      feedClass: feed.constructor.name,
+      marketInfo: typeof feed.getMarketInfo === 'function' ? feed.getMarketInfo() : null,
+      storeMode: store.mode,
+    });
+  });
+
   // TP/SL risk controls — read/write surface for the dashboard.
   app.get('/api/risk', (req, res) => {
     res.json({ ok: true, risk: engine.risk });
