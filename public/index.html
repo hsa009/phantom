@@ -237,18 +237,23 @@
   /* ---- Risk Management ---------------------------------------------- */
 
   let riskDirty = false;
+  let riskPending = false;
 
   function syncRiskFromState() {
     const r = (state && state.risk) || {};
     const setVal = (id, v) => { const el = $(id); if (el && document.activeElement !== el) el.value = v; };
-    $('tp-enable').checked = Boolean(r.tpEnabled);
-    $('sl-enable').checked = Boolean(r.slEnabled);
+    if (!riskPending) {
+      $('tp-enable').checked = Boolean(r.tpEnabled);
+      $('sl-enable').checked = Boolean(r.slEnabled);
+    }
     if (r.tpValue != null) setVal('tp-value', Number(r.tpValue).toFixed(2));
     if (r.slValue != null) setVal('sl-value', Number(r.slValue).toFixed(2));
   }
 
   let pushTimer = null;
   function pushRisk() {
+    riskPending = true;
+    riskDirty = true;
     const payload = {
       tpEnabled: $('tp-enable').checked,
       tpValue: Number($('tp-value').value || 0),
@@ -263,9 +268,21 @@
         body: JSON.stringify(payload),
       })
         .then((r) => r.json())
-        .then((j) => { if (j && j.ok) riskDirty = false; })
-        .catch((err) => console.error('risk push failed:', err));
-    }, 300);
+        .then((j) => {
+          if (j && j.ok) {
+            riskDirty = false;
+            riskPending = false;
+            if (state) state.risk = j.risk;
+            syncRiskFromState();
+          } else {
+            riskPending = false;
+          }
+        })
+        .catch((err) => {
+          console.error('risk push failed:', err);
+          riskPending = false;
+        });
+    }, 150);
   }
 
   ['tp-enable', 'sl-enable', 'tp-value', 'sl-value'].forEach((id) => {
