@@ -6,19 +6,22 @@ const path = require('path');
 const express = require('express');
 
 const { loadConfig } = require('./lib/config');
-const { getMarketFeed } = require('./lib/solana');
+const { getMarketFeed, KalshiFeed } = require('./lib/solana');
 const { PaperEngine } = require('./lib/engine');
 const { getStore } = require('./lib/supabase');
 const { TelegramBot } = require('./lib/telegram');
 const { attachWebSocketServer } = require('./lib/websocket');
+const { PriceBtc } = require('./lib/btc-price');
 
 function composeState(feed, engine, store, startedAt, wss) {
   return {
     mode: feed.feedMode,
     feedSource: feed.source || 'unknown',
     balance: engine.balance,
+    risk: engine.risk,
     status: engine.getStatus(),
     quote: feed.getQuote(),
+    marketInfo: typeof feed.getMarketInfo === 'function' ? feed.getMarketInfo() : null,
     recentTrades: engine.getTrades(15),
     uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
     wsClients: wss ? wss.clients.size : 0,
@@ -42,7 +45,21 @@ async function main() {
 
   // 2) Feed + engine
   const feed = getMarketFeed(config);
-  const engine = new PaperEngine(config, feed);
+  const engine = new PaperEngine(config, feed, {
+    refreshRisk: async () =>
+      store.getRiskConfig().catch((err) => {
+        console.error('[index] risk refresh failed:', err.message);
+        return null;
+      }),
+  });
+
+  // 2b) BTC spot price source + attach to Kalshi-mode feed
+  const priceBtc = new PriceBtc(config);
+  if (feed instanceof KalshiFeed) {
+    feed._attachPriceBtc(priceBtc);
+    feed.marketRoller = () => true;
+  }
+  priceBtc.start();
 
   // 3) Telegram (chat id auto-discovered from the first DM)
   const telegram = new TelegramBot(config, {
@@ -97,10 +114,68 @@ async function main() {
       mode: config.MARKET_MODE,
       balance: engine.balance,
       openPositions: engine.position ? 1 : 0,
+      risk: engine.risk,
       wsClients: wss ? wss.clients.size : 0,
       uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
       timestamp: Date.now(),
     });
+  });
+
+  // TP/SL risk controls — read/write surface for the dashboard.
+  app.get('/api/risk', (req, res) => {
+    res.json({ ok: true, risk: engine.risk });
+  });
+
+  app.post('/api/risk', express.json(), async (req, res) => {
+    const body = req.body || {};
+    if (config.API_KEY && req.get('x-api-key') !== config.API_KEY) {
+      res.status(401).json({ ok: false, error: 'unauthorized' });
+      return;
+    }
+    const merged = {
+      tpEnabled: body.tpEnabled !== undefined ? Boolean(body.tpEnabled) : engine.risk.tpEnabled,
+      tpValue: body.tpValue !== undefined ? Number(body.tpValue) : engine.risk.tpValue,
+      slEnabled: body.slEnabled !== undefined ? Boolean(body.slEnabled) : engine.risk.slEnabled,
+      slValue: body.slValue !== undefined ? Number(body.slValue) : engine.risk.slValue,
+    };
+    engine.setRisk(merged);
+    try {
+      const persisted = await store.setRiskConfig(merged);
+      if (persisted) engine.setRisk(persisted);
+      console.log(
+        `[index] risk updated: TP ${merged.tpEnabled ? 'ON' : 'off'} $${merged.tpValue}, ` +
+          `SL ${merged.slEnabled ? 'ON' : 'off'} $${merged.slValue}`
+      );
+      res.json({ ok: true, risk: engine.risk, persisted: Boolean(persisted) });
+    } catch (err) {
+      console.error('[index] setRiskConfig failed:', err.message);
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // Fresh-start: reset the virtual bankroll, clear the ledger, return risk to defaults.
+  app.post('/api/reset', async (req, res) => {
+    if (config.API_KEY && req.get('x-api-key') !== config.API_KEY) {
+      res.status(401).json({ ok: false, error: 'unauthorized' });
+      return;
+    }
+    try {
+      await store.clearTrades();
+      const defaults = {
+        tpEnabled: config.TP_ENABLED,
+        tpValue: config.TP_VALUE,
+        slEnabled: config.SL_ENABLED,
+        slValue: config.SL_VALUE,
+      };
+      engine.setRisk(defaults);
+      await store.setRiskConfig(defaults).catch(() => null);
+      engine.reset();
+      console.log('[index] bankroll reset to $18.00 and ledger cleared — fresh start.');
+      res.json({ ok: true, balance: engine.balance });
+    } catch (err) {
+      console.error('[index] /api/reset failed:', err.message);
+      res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   const server = http.createServer(app);
@@ -118,6 +193,7 @@ async function main() {
   const shutdown = (why) => {
     console.log(`[index] ${why} — shutting down cleanly...`);
     feed.stop();
+    priceBtc.stop();
     engine.stop();
     telegram.stop();
     try {

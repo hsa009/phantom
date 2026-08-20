@@ -36,7 +36,7 @@ async function main() {
   const MIN_WINDOWS = Number(process.env.DEMO_MIN_WINDOWS || 8);
   const TIME_BUDGET_MS = Number(process.env.DEMO_TIME_BUDGET_MS || 90000);
 
-  const stats = { opened: 0, closed: { take_profit: 0, stop_loss: 0, expiry: 0, reset: 0 }, skipped: new Map() };
+  const stats = { opened: 0, closed: { tp_exit: 0, sl_exit: 0, expiry: 0, reset: 0 }, skipped: new Map() };
   const mathBad = 0;
 
   engine.on('windowSkipped', ({ reason, detail }) => {

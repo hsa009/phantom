@@ -12,6 +12,7 @@
     "dev": "node --watch index.js",
     "demo:feed": "node scripts/demo-feed.js",
     "demo:drift": "node scripts/demo-drift.js",
+    "demo:kalshi": "node scripts/demo-kalshi.js",
     "demo:engine": "node scripts/demo-engine.js",
     "demo:supabase": "node scripts/demo-supabase.js",
     "demo:telegram": "node scripts/demo-telegram.js"

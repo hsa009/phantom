@@ -69,6 +69,21 @@
   .pnl.green { color: #2e9e44; }
   .pnl.red { color: #d32f2f; }
   .empty { padding: 24px; text-align: center; color: #999; font-size: 13px; }
+
+  /* Risk Management */
+  .risk { display: flex; flex-direction: column; gap: 12px; }
+  .risk-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .risk-lbl { font-size: 13px; font-weight: 600; }
+  .risk-sub { font-size: 11px; color: #999; }
+  .switch { position: relative; width: 42px; height: 24px; flex: 0 0 auto; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .track { position: absolute; inset: 0; border-radius: 12px; background: #cfd4da; transition: background .15s ease; cursor: pointer; }
+  .track::after { content: ''; position: absolute; left: 2px; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .15s ease; }
+  .switch input:checked + .track { background: #2e9e44; }
+  .switch input:checked + .track::after { transform: translateX(18px); }
+  .risk-inp { width: 110px; text-align: right; padding: 7px 8px; font-size: 13px; border: 1px solid #d0d3d8; border-radius: 6px; font-variant-numeric: tabular-nums; background: #fff; }
+  .risk-inp:focus { outline: none; border-color: #2e9e44; }
+  .risk-hint { font-size: 11px; color: #999; text-align: right; margin-top: 8px; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -112,8 +127,57 @@
         <div class="ln" style="margin-top:10px">
           <span>BTC Price</span><span id="price">—</span>
           <span>Mid</span><span id="mid">—</span>
+        </div>
+        <div class="ln">
           <span>Spread</span><span id="spread">—</span>
           <span>Market</span><span id="market">—</span>
+        </div>
+        <div class="ln">
+          <span>Contract</span><span id="contract">—</span>
+        </div>
+        <div class="ln">
+          <span>Window closes in</span><span id="closes-in">—</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <h2>Active Contract</h2>
+        <div id="contract-body">
+          <div class="pos-flat">No live window yet</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Risk Management</h2>
+        <div class="risk">
+          <div class="risk-row">
+            <div>
+              <div class="risk-lbl">Take Profit</div>
+              <div class="risk-sub">Early cash-out when PnL &ge; target</div>
+            </div>
+            <div class="switch">
+              <input type="checkbox" id="tp-enable" />
+              <label class="track" for="tp-enable"></label>
+            </div>
+            <input class="risk-inp" id="tp-value" type="number" step="0.01" placeholder="0.50" />
+          </div>
+          <div class="risk-row">
+            <div>
+              <div class="risk-lbl">Stop Loss</div>
+              <div class="risk-sub">Early cash-out when PnL &le; limit</div>
+            </div>
+            <div class="switch">
+              <input type="checkbox" id="sl-enable" />
+              <label class="track" for="sl-enable"></label>
+            </div>
+            <input class="risk-inp" id="sl-value" type="number" step="0.01" placeholder="-0.60" />
+          </div>
+          <div class="risk-hint">
+            TP / SL are independent. When a toggle is OFF the position holds to the
+            15-minute natural settlement. Changes apply immediately — no restart needed.
+          </div>
         </div>
       </div>
     </div>
@@ -123,7 +187,6 @@
       <div id="ledger-wrap"></div>
     </div>
   </div>
-
 <script>
 (() => {
   const WS_URL = 'wss://phantom-3nye.onrender.com';
@@ -137,12 +200,22 @@
     return p(Math.floor(s / 60)) + ':' + p(s % 60);
   };
   const time = (t) => new Date(t).toLocaleTimeString('en-GB', { hour12: false });
+  const escapeHtml = (s) => String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
   function wsUrl() {
     const h = location.hostname;
     if (h === 'localhost' || h === '127.0.0.1') return 'ws://' + location.host + '/';
     if (h.includes('onrender.com')) return 'wss://' + location.host + '/';
     return WS_URL;
+  }
+  function apiBase() {
+    const h = location.hostname;
+    if (h === 'localhost' || h === '127.0.0.1') return location.origin;
+    return 'https://phantom-3nye.onrender.com';
   }
 
   let state = null, ws = null, delay = 500;
@@ -162,9 +235,65 @@
     };
   }
 
+  /* ---- Risk Management ---------------------------------------------- */
+
+  let riskDirty = false;
+
+  function syncRiskFromState() {
+    const r = (state && state.risk) || {};
+    const setVal = (id, v) => { const el = $(id); if (el && document.activeElement !== el) el.value = v; };
+    $('tp-enable').checked = Boolean(r.tpEnabled);
+    $('sl-enable').checked = Boolean(r.slEnabled);
+    if (r.tpValue != null) setVal('tp-value', Number(r.tpValue).toFixed(2));
+    if (r.slValue != null) setVal('sl-value', Number(r.slValue).toFixed(2));
+  }
+
+  let pushTimer = null;
+  function pushRisk() {
+    const payload = {
+      tpEnabled: $('tp-enable').checked,
+      tpValue: Number($('tp-value').value || 0),
+      slEnabled: $('sl-enable').checked,
+      slValue: Number($('sl-value').value || 0),
+    };
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => {
+      fetch(apiBase() + '/api/risk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+        .then((r) => r.json())
+        .then((j) => { if (j && j.ok) riskDirty = false; })
+        .catch((err) => console.error('risk push failed:', err));
+    }, 300);
+  }
+
+  ['tp-enable', 'sl-enable', 'tp-value', 'sl-value'].forEach((id) => {
+    $(id).addEventListener('change', pushRisk);
+    $(id).addEventListener('input', pushRisk);
+  });
+
+  /* ---- Render ------------------------------------------------------ */
+
+  function contractHtml(mi) {
+    if (!mi || !mi.ticker) return '<div class="pos-flat">No live window yet</div>';
+    const remain = Math.max(0, mi.closeTime ? mi.closeTime - Date.now() : 0);
+    const settle = mi.closeTime
+      ? 'Settles ' + new Date(mi.closeTime).toLocaleString()
+      : 'Settlement time unknown';
+    return (
+      '<div class="pos-line"><span class="k">Ticker</span><span class="v">' + escapeHtml(mi.ticker) + '</span></div>' +
+      '<div class="pos-line"><span class="k">Window</span><span class="v">' + dur(remain) + '</span></div>' +
+      '<div class="pos-line"><span class="k">Settlement</span><span class="v">' + escapeHtml(settle) + '</span></div>' +
+      '<div class="pos-line"><span class="k">Rule</span><span class="v">60s avg &ge; open avg</span></div>'
+    );
+  }
+
   function render() {
     if (!state) return;
     const s = state, st = s.status || {}, q = s.quote;
+    const mi = s.marketInfo || null;
 
     $('chip-mode').textContent = (q && q.asset ? q.asset : s.mode || '—').toUpperCase() + (q && q.simulated ? ' (SIM)' : '');
     $('chip-clients').textContent = (s.wsClients ?? 0) + ' clients';
@@ -184,7 +313,11 @@
       $('spread').textContent = (q.yesAsk - q.yesBid).toFixed(4);
       $('market').textContent = q.marketId;
       $('price').textContent = q.price != null ? '$' + Number(q.price).toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—';
+      $('contract').textContent = (mi && mi.ticker) || '—';
+      $('closes-in').textContent = mi && mi.closeTime ? dur(mi.closeTime - Date.now()) : '—';
     }
+
+    $('contract-body').innerHTML = contractHtml(mi);
 
     const p = st.openPosition;
     const body = $('pos-body');
@@ -204,7 +337,18 @@
     }
 
     renderLedger(s.recentTrades || []);
+    syncRiskFromState();
   }
+
+  const REASON_LABEL = {
+    take_profit: 'TP (early cash-out)',
+    tp_exit: 'TP (early cash-out)',
+    stop_loss: 'SL (early cash-out)',
+    sl_exit: 'SL (early cash-out)',
+    expiry: 'Expiry (natural settlement)',
+    reset: 'Reset',
+    recovery: 'Recovery',
+  };
 
   function renderLedger(trades) {
     const wrap = $('ledger-wrap');
@@ -217,11 +361,11 @@
       trades.slice(0, 50).map((t) =>
         '<tr>' +
           '<td>' + time(t.closedAt) + '</td>' +
-          '<td>' + t.direction + '</td>' +
+          '<td>' + escapeHtml(t.direction) + '</td>' +
           '<td>' + price(t.entryPrice) + '</td>' +
           '<td>' + price(t.exitPrice) + '</td>' +
           '<td class="pnl ' + (t.pnl >= 0 ? 'green' : 'red') + '">' + money(t.pnl) + '</td>' +
-          '<td>' + t.reason + '</td>' +
+          '<td>' + escapeHtml(REASON_LABEL[t.reason] || t.reason || '—') + '</td>' +
           '<td>' + dur(t.durationMs) + '</td>' +
         '</tr>'
       ).join('') +
@@ -235,10 +379,18 @@
       const line = [...document.querySelectorAll('#pos-body .pos-line')].find((l) => l.textContent.includes('Closes in'));
       if (line) line.querySelector('.v').textContent = dur(remain);
     }
+    if (state && state.marketInfo && state.marketInfo.closeTime) {
+      $('closes-in').textContent = dur(state.marketInfo.closeTime - Date.now());
+    }
   }, 1000);
+
+  fetch(apiBase() + '/api/risk')
+    .then((r) => r.json())
+    .then((j) => { if (j && j.ok) { if (!state) state = { risk: j.risk }; syncRiskFromState(); } else { state = state || {}; state.risk = j.risk; syncRiskFromState(); } })
+    .catch(() => {});
 
   connect();
 })();
-</script>
+</scr' + 'ipt>
 </body>
 </html>
