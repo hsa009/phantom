@@ -5,17 +5,6 @@ const { loadConfig } = require('../lib/config');
 const { getMarketFeed, KalshiFeed } = require('../lib/solana');
 const { PriceBtc } = require('../lib/btc-price');
 
-/**
- * Read-only harness for the Kalshi adapter (no fills, no money).
- *
- * Hits the public Kalshi XB market feed and asserts:
- *   1. quote invariants (noBid = 1 - yesAsk, inside [0,1])
- *   2. exactly one ACTIVE contract per poll
- *   3. the rollover -> market event carries the correct close_time
- *
- * Requires MARKET_MODE=kalshi (or KALSHI_* env) and network access.
- */
-
 function checkQuote(q) {
   const bad = [];
   const has = (k) => q[k] != null;
@@ -59,7 +48,6 @@ async function main() {
     }
     const wEnd = mi && mi.closeTime ? Number(mi.closeTime) : q.windowEnd;
     if (q.yesBid > 0 && q.yesAsk > 0 && wEnd) {
-      // Book is live; the contract window must contain now.
       const now = Date.now();
       if (!(now < wEnd)) failures.activeInWindow += 1;
     }

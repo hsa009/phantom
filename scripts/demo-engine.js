@@ -5,25 +5,14 @@ const { loadConfig } = require('../lib/config');
 const { getMarketFeed } = require('../lib/solana');
 const { PaperEngine } = require('../lib/engine');
 
-/**
- * Fast-mode demo harness for the engine.
- *
- * Overrides the 5-minute market duration with DEMO_MARKET_MS (default 8000ms)
- * so take-profit / stop-loss / expiry paths all become observable quickly.
- * Verify the math yourself with:  pnl == tokensBought*exitPrice - stake
- */
-
 function overrideForDemo(config) {
   const dur = Number(process.env.DEMO_MARKET_MS || 8000);
   if (!Number.isFinite(dur) || dur < 2000) {
     throw new Error('DEMO_MARKET_MS must be >= 2000');
   }
   config.MARKET_DURATION_MS = dur;
-  // Keep the expiry cash-out comfortably inside the shrunken window.
   config.EXIT_BUFFER_MS = Math.max(500, Math.round(dur * 0.2));
-  // Shrink lookbacks so the momentum buffer fills after a window or two.
   config.MOMENTUM_LOOKBACK_MS = Math.min(config.MOMENTUM_LOOKBACK_MS, Math.round(dur * 0.5));
-  // MOMENTUM_THRESHOLD is a fractional return; keep it loose for the demo.
   config.MOMENTUM_THRESHOLD = Math.max(0.0005, config.MOMENTUM_THRESHOLD * 0.5);
   return config;
 }

@@ -6,12 +6,6 @@ const { getMarketFeed } = require('../lib/solana');
 const { PaperEngine } = require('../lib/engine');
 const { getStore } = require('../lib/supabase');
 
-/**
- * Verifies the engine -> store (Supabase or mock) wiring:
- * every OPEN row gains a CLOSED counterpart, row pnl matches the engine
- * history, and recovery() leaves no stranded OPEN rows.
- */
-
 function overrideForDemo(config) {
   const dur = Number(process.env.DEMO_MARKET_MS || 8000);
   config.MARKET_DURATION_MS = dur;
@@ -53,7 +47,6 @@ async function main() {
     await sleep(200);
   }
 
-  // Recovery pass: settle anything still OPEN (also exercises the recovery path).
   const recovered = await store.recoverOpenPositions();
 
   const engineHistory = engine.getTrades(500);

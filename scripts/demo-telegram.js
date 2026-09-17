@@ -7,15 +7,6 @@ const { PaperEngine } = require('../lib/engine');
 const { getStore } = require('../lib/supabase');
 const { TelegramBot } = require('../lib/telegram');
 
-/**
- * Verifies the Telegram module:
- *  - alert formatting (opened / closed / status) via a capture spy
- *  - command handlers route to engine.getStatus / engine.reset
- *  - graceful no-op when no token is configured
- *  - if TELEGRAM_BOT_TOKEN is set, long-polls and auto-discovers the chat id
- *    the moment the owner DMs the bot (optionally sends a real test alert).
- */
-
 function overrideForDemo(config) {
   const dur = Number(process.env.DEMO_MARKET_MS || 8000);
   config.MARKET_DURATION_MS = dur;
@@ -45,7 +36,6 @@ async function main() {
     return Promise.resolve(true);
   };
 
-  // Wire engine events -> store + telegram
   engine.on('tradeOpened', (t) => {
     store.logOpen(t).catch((err) => console.error('[store] logOpen failed:', err.message));
     bot.notifyTradeOpened(t);
@@ -66,8 +56,6 @@ async function main() {
     await sleep(200);
   }
 
-  // If a real token is configured, wait briefly for chat auto-discovery
-  // (owner DMs the bot during this window).
   let discovered = false;
   if (config.TELEGRAM_BOT_TOKEN) {
     const waitUntil = Date.now() + Number(process.env.DISCOVER_TIMEOUT_MS || 20000);

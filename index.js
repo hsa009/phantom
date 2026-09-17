@@ -34,8 +34,6 @@ async function main() {
   const config = loadConfig();
   const startedAt = Date.now();
 
-  // 1) Persistence first — settle any OPEN rows left by a previous run
-  //    (e.g. Render restarted mid-trade).
   const store = getStore(config);
   try {
     await store.recoverOpenPositions();
@@ -43,7 +41,6 @@ async function main() {
     console.error('[index] recovery failed:', err.message);
   }
 
-  // 2) Feed + engine
   const feed = getMarketFeed(config);
   const engine = new PaperEngine(config, feed, {
     refreshRisk: async () =>
@@ -53,7 +50,6 @@ async function main() {
       }),
   });
 
-  // 2b) BTC spot price source + attach to Kalshi-mode feed
   const priceBtc = new PriceBtc(config);
   if (feed instanceof KalshiFeed) {
     feed._attachPriceBtc(priceBtc);
@@ -61,7 +57,6 @@ async function main() {
   }
   priceBtc.start();
 
-  // 3) Telegram (chat id auto-discovered from the first DM)
   const telegram = new TelegramBot(config, {
     getStatus: () => engine.getStatus(),
     reset: () => {
@@ -72,7 +67,6 @@ async function main() {
     },
   });
 
-  // 4) Wire engine events -> persistence + alerts
   engine.on('tradeOpened', async (t) => {
     try {
       await store.logOpen(t);
@@ -99,11 +93,9 @@ async function main() {
   );
   engine.on('reset', () => console.log('[index] engine reset'));
 
-  // 5) Start market data + trading loop
   feed.start();
   engine.start();
 
-  // 6) Express HTTP (health/keep-alive) + WebSocket streaming
   const app = express();
   app.use(express.static(path.join(__dirname, 'public')));
 
@@ -121,7 +113,6 @@ async function main() {
     });
   });
 
-  // Feed/mode diagnostics — one curl to see exactly what feed is live.
   app.get('/api/mode', (req, res) => {
     res.json({
       marketMode: config.MARKET_MODE,
@@ -133,7 +124,6 @@ async function main() {
     });
   });
 
-  // TP/SL risk controls — read/write surface for the dashboard.
   app.get('/api/risk', (req, res) => {
     res.json({ ok: true, risk: engine.risk });
   });
@@ -165,7 +155,6 @@ async function main() {
     }
   });
 
-  // Fresh-start: reset the virtual bankroll, clear the ledger, return risk to defaults.
   app.post('/api/reset', async (req, res) => {
     if (config.API_KEY && req.get('x-api-key') !== config.API_KEY) {
       res.status(401).json({ ok: false, error: 'unauthorized' });
@@ -198,10 +187,8 @@ async function main() {
     console.log('[index] bot engine started');
   });
 
-  // 7) Telegram commands (polling)
   telegram.start();
 
-  // 8) Graceful shutdown for Render spins / redeploys
   const shutdown = (why) => {
     console.log(`[index] ${why} — shutting down cleanly...`);
     feed.stop();
@@ -211,7 +198,6 @@ async function main() {
     try {
       wss.close();
     } catch {
-      // already closed
     }
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
